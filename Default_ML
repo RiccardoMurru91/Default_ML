@@ -1,0 +1,270 @@
+import pandas as pd
+import numpy as np
+import locale
+import seaborn as sns
+import matplotlib.pyplot as plt
+from matplotlib.pyplot import pie, axis, show
+import random
+
+
+from sklearn.preprocessing import OneHotEncoder, LabelEncoder
+from sklearn.preprocessing import MinMaxScaler, StandardScaler, RobustScaler, MaxAbsScaler
+
+from sklearn.linear_model import LogisticRegression
+
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import VotingClassifier
+
+from sklearn.model_selection import train_test_split, GridSearchCV
+
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, roc_auc_score 
+from sklearn.metrics import roc_curve, f1_score, precision_score, recall_score
+
+import warnings
+import sys
+import os
+
+import time
+from datetime import datetime
+
+pd.set_option('display.max_columns', 45)
+warnings.filterwarnings("ignore")
+sns.set()
+
+def nice_plotting(title, xlabel='', ylabel='', new_fig= True , figsize= (10,6), title_size=18):
+    if new_fig== True:
+        plt.figure(figsize=figsize)
+        
+    plt.title(title, color= 'xkcd:pale red', fontsize= title_size, pad= 13, fontweight= 'bold')
+    plt.xlabel(xlabel, color='xkcd:pale red', fontsize= 14, fontweight= 'bold')
+    plt.ylabel(ylabel, color= 'xkcd:pale red', fontsize= 14, fontweight= 'bold')
+    plt.xticks(fontsize=12, color= 'xkcd:cadet blue')
+    plt.yticks(fontsize=12, color= 'xkcd:cadet blue')
+
+df= pd.read_csv('Loan_Default.csv')
+df.set_index("ID", inplace=True)
+df.shape
+
+def summary(df, by='Null Values', head=None):
+    unique_values = {}
+    null_values = {}
+    type_values = {}
+    max_values = {}
+    min_values = {}
+    mean_values = {}
+    median_values = {}
+
+    for i in df.columns:
+        unique_values[i] = len(df[i].unique())
+        null_values[i] = df[i].isna().sum()
+        type_values[i] = df[i].dtype
+        if df[i].dtype == "int64" or df[i].dtype == "float64":
+            max_values[i] = df[i].max()
+            min_values[i] = df[i].min()
+            mean_values[i] = df[i].mean()
+            median_values[i] = df[i].median()
+
+    df_values = pd.DataFrame(list(unique_values.items()), columns=['Column', 'Unique Values'])
+    df_values.set_index('Column', inplace=True)
+
+    df_null_values = pd.DataFrame(list(null_values.items()), columns=['Column', 'Null Values'])
+    df_null_values.set_index('Column', inplace=True)
+
+    df_types_values = pd.DataFrame(list(type_values.items()), columns=['Column', 'Type'])
+    df_types_values.set_index('Column', inplace=True)
+
+    df_max = pd.DataFrame(list(max_values.items()), columns=['Column', 'Max'])
+    df_max.set_index('Column', inplace=True)
+
+    df_min = pd.DataFrame(list(min_values.items()), columns=['Column', 'Min'])
+    df_min.set_index('Column', inplace=True)
+
+    df_mean = pd.DataFrame(list(mean_values.items()), columns=['Column', 'Mean'])
+    df_mean.set_index('Column', inplace=True)
+
+    df_median = pd.DataFrame(list(median_values.items()), columns=['Column', 'Median'])
+    df_median.set_index('Column', inplace=True)
+
+    summary_df = pd.concat([df_null_values, df_values, df_types_values, df_max, df_mean, df_min, df_median], axis=1)
+    summary_df["Null Values"] = summary_df["Null Values"] / len(df) * 100
+    summary_df = summary_df.sort_values(by=[by], ascending=False)
+    
+    if head is not None:
+        summary_df = summary_df.head(head)
+
+    return summary_df.style.format({
+        "Null Values": "{:,.2f}",  
+        "Max": "{:,.2f}",
+        "Mean": "{:,.2f}",
+        "Min": "{:,.2f}",
+        "Median": "{:,.2f}"
+    })
+
+summary(df, "Null Values", 15)
+df.drop(['year'], axis=1, inplace=True)
+df["age"].value_counts(normalize=True)
+
+def check_95th_percentile(dataframe, column, numberBins = 200):
+    quantiles = dataframe[column].quantile([0.025, 0.975])  
+
+    plot = sns.histplot(dataframe[column], bins = numberBins)
+
+    plot.set_xlim(quantiles[0.025], quantiles[0.975])
+
+    plot
+check_95th_percentile(df, "property_value")
+
+def left_null(dataframe):
+    
+    styled_summary = summary(dataframe, 'Null Values')
+
+    summary_df = styled_summary.data
+
+    filtered_summary_df = summary_df[summary_df['Null Values'] > 0]
+
+    filtered_summary_df = filtered_summary_df[['Null Values']]
+
+    return filtered_summary_df
+left_null(df)
+
+X_train= df.sample(frac= 0.8, replace = False, random_state= 42)
+X_test= df.drop(X_train.index)
+print(X_train.shape, X_test.shape)
+list_ages_probabilities = round(X_train["age"].value_counts(normalize=True), 3)
+
+list_ages = sorted(X_train["age"].dropna().unique())
+
+age_probabilities = [list_ages_probabilities[age] for age in list_ages]
+
+cum_weights = [sum(age_probabilities[:i+1]) for i in range(len(age_probabilities))]
+
+random_ages = random.choices(list_ages, cum_weights=cum_weights, k=X_train["age"].isna().sum())
+X_train.loc[X_train["age"].isna(), "age"] = random_ages
+
+random_ages = random.choices(list_ages, cum_weights=cum_weights, k=X_test["age"].isna().sum())
+X_test.loc[X_test["age"].isna(), "age"] = random_ages
+
+float_null_columns = []
+object_null_columns = []
+
+def list_columns_with_null(dataframe):
+
+    styled_summary = summary(dataframe, 'Null Values')
+    summary_df = styled_summary.data
+
+    filtered_summary_df = summary_df[summary_df['Null Values'] > 0]
+
+    for column, dtype in filtered_summary_df['Type'].items():
+        if dtype == 'float64':
+            float_null_columns.append(column)
+        else:
+            object_null_columns.append(column)
+
+    return float_null_columns, object_null_columns
+
+list_columns_with_null(X_train)
+
+Upfront_charges=X_train.groupby("age")["Upfront_charges"].mean()
+Interest_rate_spread=X_train.groupby("age")["Interest_rate_spread"].mean()
+rate_of_interest=X_train.groupby("age")["rate_of_interest"].mean()
+dtir1=X_train.groupby("age")["dtir1"].mean()
+LTV=X_train.groupby("age")["LTV"].mean()
+property_value=X_train.groupby("age")["property_value"].mean()
+income=X_train.groupby("age")["income"].mean()
+term=X_train.groupby("age")["term"].mean()
+
+mean_values_by_age = {
+    "term": term,
+    "Upfront_charges":Upfront_charges,
+    "Interest_rate_spread":Interest_rate_spread,
+    "rate_of_interest": rate_of_interest,
+    "dtir1": dtir1,
+    "LTV": LTV,
+    "property_value": property_value,
+    "income":income
+}
+
+for column in float_null_columns:
+    for age_group in X_train["age"].unique():
+        
+        mean_value = mean_values_by_age[column].get(age_group, np.nan)
+        
+        X_train.loc[X_train.age == age_group, column] = X_train.loc[X_train.age == age_group, column].fillna(mean_value)
+        X_test.loc[X_test.age == age_group, column] = X_test.loc[X_test.age == age_group, column].fillna(mean_value)
+
+for column in object_null_columns:
+    print(X_train[column].unique())  
+
+for column in object_null_columns:
+    most_common_value = X_train[column].value_counts().index[0]
+    X_train[column].replace(np.nan, most_common_value, inplace=True)
+    X_test[column].replace(np.nan, most_common_value, inplace=True)
+
+categorical_columns = list(X_train.select_dtypes(include = object).columns)
+non_categorical_columns = list(X_train.select_dtypes(exclude = object).columns)
+
+OH_encoder = OneHotEncoder(handle_unknown='ignore', sparse=False)
+
+OH_cols_train = pd.DataFrame(OH_encoder.fit_transform(X_train[categorical_columns])) #transform categorical_columns
+OH_cols_test = pd.DataFrame(OH_encoder.transform(X_test[categorical_columns]))       #transform categorical_columns
+
+OH_cols_train.index = X_train.index #give to transformation original index
+OH_cols_test.index = X_test.index   #give to transformation original index
+
+numeric_X_train = X_train.drop(categorical_columns, axis=1)  #identify numeric columns
+numeric_X_test = X_test.drop(categorical_columns, axis=1)    #identify numeric columns
+
+new_X_train = pd.concat([numeric_X_train, OH_cols_train], axis=1) #old numeric columns +  (still unnamed)
+new_X_test = pd.concat([numeric_X_test, OH_cols_test], axis=1)    #old numeric columns + new columns (still unnamed)
+
+categorical_columns_names = [f'{col}_{cat}' for i, col in enumerate(categorical_columns) for cat in OH_encoder.categories_[i]] # new columnsnamed
+new_column_names = list(numeric_X_train.columns) + categorical_columns_names
+
+
+new_X_test.columns = new_column_names
+new_X_train.columns = new_column_names
+new_X_train
+
+y_train= new_X_train['Status'] #I just take column with target
+y_test= new_X_test['Status'] #I just take column with target
+
+train_encoded= new_X_train.drop('Status', axis=1, errors= 'ignore') #Take out target
+test_encoded= new_X_test.drop('Status', axis=1, errors= 'ignore') #Take out target
+
+scaled_train_df = pd.DataFrame(scaled_train, columns=train_encoded.columns)  # df without target
+scaled_test_df = pd.DataFrame(scaled_test, columns=test_encoded.columns) # df without target
+
+scaled_train_df.head()
+
+cont_cols= ['loan_amount','rate_of_interest','Interest_rate_spread','Upfront_charges','term','property_value','income',
+            'Credit_Score','LTV','Status','dtir1']
+
+nice_plotting('Correlation between features', new_fig= True)
+
+sns.heatmap(new_X_train[cont_cols].corr(), 
+            cmap= 'coolwarm', 
+            annot= True);
+
+#We need to deal with highly correlated values
+
+logmodel = LogisticRegression()
+logmodel.fit(scaled_train_df, y_train)
+predictions = logmodel.predict(scaled_test_df)
+print(confusion_matrix(y_test, predictions))
+new_X_test["Predictions"]=pd.Series(predictions)
+new_X_test[["Status", "Predictions"]].head(50)
+
+coefficients_df['Abs_Coefficient'] = abs(coefficients_df['Coefficient'])
+
+coefficients_df_sorted = coefficients_df.sort_values(by='Abs_Coefficient', ascending=False)
+
+coefficients_df_sorted.head(20)
+
+predictions_proba = logmodel.predict_proba(scaled_test_df)
+
+probability_positive_class = predictions_proba[:, 1]
+probability_positive_class
+
+new_X_test["Pertentage Positive Class"]=pd.Series(probability_positive_class)
+new_X_test[["Status", "Predictions", "Pertentage Positive Class"]].head(50)
