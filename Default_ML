@@ -1,3 +1,5 @@
+#Import libraries
+
 import pandas as pd
 import numpy as np
 import locale
@@ -32,6 +34,8 @@ pd.set_option('display.max_columns', 45)
 warnings.filterwarnings("ignore")
 sns.set()
 
+#Function for plotting
+
 def nice_plotting(title, xlabel='', ylabel='', new_fig= True , figsize= (10,6), title_size=18):
     if new_fig== True:
         plt.figure(figsize=figsize)
@@ -43,8 +47,9 @@ def nice_plotting(title, xlabel='', ylabel='', new_fig= True , figsize= (10,6), 
     plt.yticks(fontsize=12, color= 'xkcd:cadet blue')
 
 df= pd.read_csv('Loan_Default.csv')
-df.set_index("ID", inplace=True)
-df.shape
+df.set_index("ID", inplace=True) #148670 rows, 33 columns/features
+
+#Exploration of values
 
 def summary(df, by='Null Values', head=None):
     unique_values = {}
@@ -54,6 +59,7 @@ def summary(df, by='Null Values', head=None):
     min_values = {}
     mean_values = {}
     median_values = {}
+    std_values = {}
 
     for i in df.columns:
         unique_values[i] = len(df[i].unique())
@@ -64,6 +70,7 @@ def summary(df, by='Null Values', head=None):
             min_values[i] = df[i].min()
             mean_values[i] = df[i].mean()
             median_values[i] = df[i].median()
+            std_values[i] = df[i].std()
 
     df_values = pd.DataFrame(list(unique_values.items()), columns=['Column', 'Unique Values'])
     df_values.set_index('Column', inplace=True)
@@ -85,8 +92,11 @@ def summary(df, by='Null Values', head=None):
 
     df_median = pd.DataFrame(list(median_values.items()), columns=['Column', 'Median'])
     df_median.set_index('Column', inplace=True)
+    
+    df_std = pd.DataFrame(list(std_values.items()), columns=['Column', 'Std'])
+    df_std.set_index('Column', inplace=True)
 
-    summary_df = pd.concat([df_null_values, df_values, df_types_values, df_max, df_mean, df_min, df_median], axis=1)
+    summary_df = pd.concat([df_null_values, df_values, df_types_values, df_max, df_mean, df_min, df_median, df_std], axis=1)
     summary_df["Null Values"] = summary_df["Null Values"] / len(df) * 100
     summary_df = summary_df.sort_values(by=[by], ascending=False)
     
@@ -98,12 +108,21 @@ def summary(df, by='Null Values', head=None):
         "Max": "{:,.2f}",
         "Mean": "{:,.2f}",
         "Min": "{:,.2f}",
-        "Median": "{:,.2f}"
+        "Median": "{:,.2f}",
+        "Std": "{:,.2f}"
     })
 
-summary(df, "Null Values", 15)
+summary(df, "Unique Values", 33) #year has just one value. It can be dropped
+
 df.drop(['year'], axis=1, inplace=True)
-df["age"].value_counts(normalize=True)
+
+#Exploration of outliers. For example in the column "property_value" there are many outliers.
+
+df_outliers = pd.DataFrame(np.random.randn(10, 1),
+                  columns=['property_value'])
+boxplot = df.boxplot(column=['property_value']) 
+
+#Therefore it is useful to check the distributions through the percentiles.
 
 def check_95th_percentile(dataframe, column, numberBins = 200):
     quantiles = dataframe[column].quantile([0.025, 0.975])  
@@ -113,7 +132,37 @@ def check_95th_percentile(dataframe, column, numberBins = 200):
     plot.set_xlim(quantiles[0.025], quantiles[0.975])
 
     plot
+
 check_95th_percentile(df, "property_value")
+
+#To explore a bit better the outliers, created a column with z-score.
+
+df["zscore_property_value"] = (df.property_value - df.property_value.mean())/df.property_value.std()
+df.sort_values(by=['zscore_property_value'], ascending=False)[["zscore_property_value", "property_value"]].head(10)
+
+df["zscore_loan_amount"] = (df.loan_amount - df.loan_amount.mean())/df.loan_amount.std()
+df.sort_values(by=['zscore_loan_amount'], ascending=False)[["zscore_loan_amount", "loan_amount"]].head(10)
+
+df["zscore_income"] = (df.income - df.income.mean())/df.income.std()
+df.sort_values(by=['zscore_income'], ascending=False)[["zscore_income", "income"]].head(30)
+
+df["zscore_LTV"] = (df.LTV - df.LTV.mean())/df.LTV.std()
+df.sort_values(by=['zscore_LTV'], ascending=False)[["zscore_LTV", "LTV"]].head(10)
+
+df["zscore_Upfront_charges"] = (df.Upfront_charges - df.Upfront_charges.mean())/df.Upfront_charges.std()
+df.sort_values(by=['zscore_Upfront_charges'], ascending=False)[["zscore_Upfront_charges", "Upfront_charges"]].head(5)
+
+#Then the "z_value" columns are dropped.
+
+def delete_zscore_columns(dataframe):
+    columns_to_delete = ['zscore_property_value', 'zscore_loan_amount', 'zscore_income',
+           'zscore_LTV', 'zscore_Upfront_charges']
+    for column in columns_to_delete:
+        dataframe.drop([column], axis=1, inplace=True)
+
+delete_zscore_columns(df)
+
+#Created also a function just to check null values
 
 def left_null(dataframe):
     
@@ -126,24 +175,121 @@ def left_null(dataframe):
     filtered_summary_df = filtered_summary_df[['Null Values']]
 
     return filtered_summary_df
+
 left_null(df)
 
-X_train= df.sample(frac= 0.8, replace = False, random_state= 42)
-X_test= df.drop(X_train.index)
-print(X_train.shape, X_test.shape)
-list_ages_probabilities = round(X_train["age"].value_counts(normalize=True), 3)
+#Division between train and test
 
-list_ages = sorted(X_train["age"].dropna().unique())
+train_size= 0.8
+train_df= df.sample(frac= train_size, replace = False, random_state= 42)
+test_df= df.drop(train_df.index)
 
-age_probabilities = [list_ages_probabilities[age] for age in list_ages]
+#Check that there is the same proprtion of missing values in df and train_df
 
-cum_weights = [sum(age_probabilities[:i+1]) for i in range(len(age_probabilities))]
+left_null(df)
+left_null(train_df)
 
-random_ages = random.choices(list_ages, cum_weights=cum_weights, k=X_train["age"].isna().sum())
-X_train.loc[X_train["age"].isna(), "age"] = random_ages
+#As expected, since there are many outliers, there is difference of max values between train_df and test_df, especially in features property_value and income
 
-random_ages = random.choices(list_ages, cum_weights=cum_weights, k=X_test["age"].isna().sum())
-X_test.loc[X_test["age"].isna(), "age"] = random_ages
+mmary(train_df, 'Max', 12)
+
+summary(test_df, 'Max', 12)
+
+#We need to deal with the outliers. An idea is to use the quantiles.
+
+print("This is the original shape of the train and test dataframes:", train_df.shape, " ", test_df.shape)
+quantiles_property_value = train_df['property_value'].quantile([0.025, 0.975]) 
+quantiles_Upfront_charges = train_df['Upfront_charges'].quantile([0.025, 0.975]) 
+quantiles_income = train_df['income'].quantile([0.025, 0.975]) 
+quantiles_LTV = train_df['LTV'].quantile([0.025, 0.975]) 
+
+train_df = train_df[(train_df["property_value"] > quantiles_property_value[0.025]) & 
+                  (train_df["property_value"] < quantiles_property_value[0.975]) & 
+                  (train_df["Upfront_charges"] < quantiles_income[0.975]) &
+                  (train_df["income"] > quantiles_income[0.025]) & 
+                  (train_df["income"] < quantiles_income[0.975]) & 
+                  (train_df["LTV"] > quantiles_LTV[0.025]) & 
+                  (train_df["LTV"] < quantiles_LTV[0.975])]
+
+test_df = test_df[(test_df["property_value"] > quantiles_property_value[0.025]) & 
+                  (test_df["property_value"] < quantiles_property_value[0.975]) & 
+                  (test_df["Upfront_charges"] < quantiles_income[0.975]) &
+                  (test_df["income"] > quantiles_income[0.025]) & 
+                  (test_df["income"] < quantiles_income[0.975]) & 
+                  (test_df["LTV"] > quantiles_LTV[0.025]) & 
+                  (test_df["LTV"] < quantiles_LTV[0.975])]
+
+print("This is the new shape of the train and test dataframes:",train_df.shape, " ", test_df.shape)
+
+#However the result is the following:
+#This is the original shape of the train and test dataframes: (118936, 32)   (29734, 32)
+#This is the new shape of the train and test dataframes: (72851, 32)   (18141, 32)
+#This means, too much data is dropped. We create again train and test.
+
+train_size= 0.8
+train_df= df.sample(frac= train_size, replace = False, random_state= 42)
+test_df= df.drop(train_df.index)
+
+#We create again the columns to check the z_values and we drop the columns with z_value > 10.
+
+columns_with_outliers = ["income", "loan_amount", "property_value", "LTV", "Upfront_charges"]
+for column in columns_with_outliers:
+    train_df[f'zscore_{column}'] = (train_df[column] - train_df[column].mean())/train_df[column].std()
+    
+train_df.sort_values(by=['zscore_property_value'], ascending=False)[['zscore_property_value', 'property_value']].head(10)
+
+limit_z_value = 10
+print("This is the original shape of the train and test dataframes:", train_df.shape, " ", test_df.shape)
+train_df = train_df.drop(train_df[(train_df.zscore_income > limit_z_value) | (train_df.zscore_loan_amount > limit_z_value) | 
+                               (train_df.zscore_property_value > limit_z_value) | (train_df.zscore_LTV > limit_z_value) | 
+                               (train_df.zscore_Upfront_charges > limit_z_value)].index)
+print("This is the new shape of the train and test dataframes:", train_df.shape, " ", test_df.shape)
+
+#Result is the following:
+#This is the original shape of the train and test dataframes: (118936, 37)   (29734, 32)
+#This is the new shape of the train and test dataframes: (118783, 37)   (29734, 32)
+
+#We delete the z_value columns.
+
+delete_zscore_columns(train_df)
+
+#Checking the columns with null values, it appears that only 0.13% of ages are missing.
+
+left_null(train_df)
+
+#There is a list of age groups and more or less 65% of people are in 3 groups, and the rest in the other 4 groups.
+#So the idea is to create a function that checks the probabilities to be in every group and populates the missing values keeping in mind the probability to be assigned to any group.
+#Example: 23,43% of people are in the 45-54 age, therefore 23,43% of those missing values are going to be populated with age group "45-54"
+
+def fill_randomly(column):
+    
+    list_column_probabilities = round(train_df[column].value_counts(normalize=True), 3)
+
+    list_values = sorted(train_df[column].dropna().unique())
+
+    values_probabilities = [list_column_probabilities[column] for column in list_values]
+
+    cum_weights = [sum(values_probabilities[:i+1]) for i in range(len(values_probabilities))]
+
+    random_values = random.choices(list_values, cum_weights=cum_weights, k=train_df[column].isna().sum())
+    train_df.loc[train_df[column].isna(), column] = random_values
+
+    random_values = random.choices(list_values, cum_weights=cum_weights, k=test_df[column].isna().sum())
+    test_df.loc[test_df[column].isna(), column] = random_values
+
+fill_randomly("age")
+
+#As expected there are no missing values in the "age" column.
+
+left_null(train_df)
+
+#And as expected the different age groups are represented the same way in df, train_df and test_df
+
+df["age"].value_counts(normalize=True)
+train_df["age"].value_counts(normalize=True)
+test_df["age"].value_counts(normalize=True)
+
+#Now we check all the columns with missing values.
 
 float_null_columns = []
 object_null_columns = []
@@ -161,18 +307,33 @@ def list_columns_with_null(dataframe):
         else:
             object_null_columns.append(column)
 
-    return float_null_columns, object_null_columns
+list_columns_with_null(train_df)
 
-list_columns_with_null(X_train)
+#float_null_columns = ['Upfront_charges',
+ 'Interest_rate_spread',
+ 'rate_of_interest',
+ 'dtir1',
+ 'LTV',
+ 'property_value',
+ 'income',
+ 'term']
 
-Upfront_charges=X_train.groupby("age")["Upfront_charges"].mean()
-Interest_rate_spread=X_train.groupby("age")["Interest_rate_spread"].mean()
-rate_of_interest=X_train.groupby("age")["rate_of_interest"].mean()
-dtir1=X_train.groupby("age")["dtir1"].mean()
-LTV=X_train.groupby("age")["LTV"].mean()
-property_value=X_train.groupby("age")["property_value"].mean()
-income=X_train.groupby("age")["income"].mean()
-term=X_train.groupby("age")["term"].mean()
+#object_null_columns = ['loan_limit',
+ 'approv_in_adv',
+ 'submission_of_application',
+ 'loan_purpose',
+ 'Neg_ammortization']
+
+#In the float_null_columns we replace the null values with the mean according to the age
+
+Upfront_charges=train_df.groupby("age")["Upfront_charges"].mean()
+Interest_rate_spread=train_df.groupby("age")["Interest_rate_spread"].mean()
+rate_of_interest=train_df.groupby("age")["rate_of_interest"].mean()
+dtir1=train_df.groupby("age")["dtir1"].mean()
+LTV=train_df.groupby("age")["LTV"].mean()
+property_value=train_df.groupby("age")["property_value"].mean()
+income=train_df.groupby("age")["income"].mean()
+term=train_df.groupby("age")["term"].mean()
 
 mean_values_by_age = {
     "term": term,
@@ -186,85 +347,336 @@ mean_values_by_age = {
 }
 
 for column in float_null_columns:
-    for age_group in X_train["age"].unique():
+    for age_group in train_df["age"].unique():
         
         mean_value = mean_values_by_age[column].get(age_group, np.nan)
         
-        X_train.loc[X_train.age == age_group, column] = X_train.loc[X_train.age == age_group, column].fillna(mean_value)
-        X_test.loc[X_test.age == age_group, column] = X_test.loc[X_test.age == age_group, column].fillna(mean_value)
+        train_df.loc[train_df.age == age_group, column] = train_df.loc[train_df.age == age_group, column].fillna(mean_value)
+        test_df.loc[test_df.age == age_group, column] = test_df.loc[test_df.age == age_group, column].fillna(mean_value)
+
+#Now we take care of missing values in the object columns
 
 for column in object_null_columns:
-    print(X_train[column].unique())  
+    print(column, '\n', '\n', train_df[column].value_counts(), '\n')
 
-for column in object_null_columns:
-    most_common_value = X_train[column].value_counts().index[0]
-    X_train[column].replace(np.nan, most_common_value, inplace=True)
-    X_test[column].replace(np.nan, most_common_value, inplace=True)
+#Here we see that in case of loan_limit, approv_in_adv, Neg_ammortization there is a value much more represented. 
+#Example: train_df['loan_limit'].value_counts()
+#cf     108214
+#ncf      7907
+#In these 3 cases we make a simple replacement with the most represented value
 
-categorical_columns = list(X_train.select_dtypes(include = object).columns)
-non_categorical_columns = list(X_train.select_dtypes(exclude = object).columns)
+train_df['loan_limit'].replace(np.nan, 'cf', inplace=True)
+test_df['loan_limit'].replace(np.nan, 'cf', inplace=True)
+train_df['approv_in_adv'].replace(np.nan, 'nopre', inplace=True)
+test_df['approv_in_adv'].replace(np.nan, 'nopre', inplace=True)
+train_df['Neg_ammortization'].replace(np.nan, 'not_neg', inplace=True)
+test_df['Neg_ammortization'].replace(np.nan, 'not_neg', inplace=True)
 
-OH_encoder = OneHotEncoder(handle_unknown='ignore', sparse=False)
+#In the other 2 cases we keep in mind how much every value is represented and we use the fill_randomly function
 
-OH_cols_train = pd.DataFrame(OH_encoder.fit_transform(X_train[categorical_columns])) #transform categorical_columns
-OH_cols_test = pd.DataFrame(OH_encoder.transform(X_test[categorical_columns]))       #transform categorical_columns
+fill_randomly("submission_of_application")
+fill_randomly("loan_purpose")
 
-OH_cols_train.index = X_train.index #give to transformation original index
-OH_cols_test.index = X_test.index   #give to transformation original index
+#Now there are no more missing values and the categorical_columns should be transformed into numbers.
 
-numeric_X_train = X_train.drop(categorical_columns, axis=1)  #identify numeric columns
-numeric_X_test = X_test.drop(categorical_columns, axis=1)    #identify numeric columns
+categorical_columns = list(train_df.select_dtypes(include = object).columns)
+non_categorical_columns = list(train_df.select_dtypes(exclude = object).columns)
 
-new_X_train = pd.concat([numeric_X_train, OH_cols_train], axis=1) #old numeric columns +  (still unnamed)
-new_X_test = pd.concat([numeric_X_test, OH_cols_test], axis=1)    #old numeric columns + new columns (still unnamed)
+#We use the mean encoding
 
-categorical_columns_names = [f'{col}_{cat}' for i, col in enumerate(categorical_columns) for cat in OH_encoder.categories_[i]] # new columnsnamed
-new_column_names = list(numeric_X_train.columns) + categorical_columns_names
+def get_target_mean(row):   
+    
+    target_mean = row['Status'].mean()
+    return round(target_mean,3)
+
+dictionary_means = {}
+
+for column in categorical_columns:
+    
+    diz_means_cols= train_df.groupby(column).apply(get_target_mean).to_dict()
+    
+    dictionary_means[column] = diz_means_cols
+
+for column in categorical_columns:
+    
+    train_df[column] = train_df[column].map(dictionary_means[column])
+    test_df[column] = test_df[column].map(dictionary_means[column])
+
+#It was also possible to use OneHotEncoder but methods like Random Forest are not good with it. Anyway this would have been the code for the OneHotEncoder:
+
+#OH_encoder = OneHotEncoder(handle_unknown='ignore', sparse=False)
+
+#OH_cols_train = pd.DataFrame(OH_encoder.fit_transform(X_train[categorical_columns])) #transform categorical_columns OH_cols_test = pd.DataFrame(OH_encoder.transform(X_test[categorical_columns])) #transform categorical_columns
+
+#OH_cols_train.index = X_train.index #give to transformation original index OH_cols_test.index = X_test.index #give to transformation original index
+
+#numeric_X_train = X_train.drop(categorical_columns, axis=1) #identify numeric columns numeric_X_test = X_test.drop(categorical_columns, axis=1) #identify numeric columns
+
+#new_X_train = pd.concat([numeric_X_train, OH_cols_train], axis=1) #old numeric columns + (still unnamed) new_X_test = pd.concat([numeric_X_test, OH_cols_test], axis=1) #old numeric columns + new columns (still unnamed)
+
+#categorical_columns_names = [f'{col}{cat}' for i, col in enumerate(categorical_columns) for cat in OH_encoder.categories[i]] # new columnsnamed new_column_names = list(numeric_X_train.columns) + categorical_columns_names
+
+#new_X_test.columns = new_column_names new_X_train.columns = new_column_names
+
+#Now the train_df and test_df are divided to apply the ML methods. "Status" is of course the Target.
+
+X_train = train_df.drop("Status", axis=1)
+y_train = train_df["Status"]
+X_test = test_df.drop("Status", axis=1)
+y_test = test_df["Status"]
+
+#We apply scaling
+
+scaler = StandardScaler(with_mean=True, with_std=True)
+
+scaled_train= scaler.fit_transform(X_train)
+
+scaled_test= scaler.transform(X_test)
+
+scaled_train_df = pd.DataFrame(scaled_train, columns=X_train.columns) 
+scaled_test_df = pd.DataFrame(scaled_test, columns=X_test.columns)
+
+#We explore the correlations
+
+columns = [col for col in non_categorical_columns + categorical_columns if col != "Status"]
+corr_matrix = scaled_train_df[columns].corr()
+annot = corr_matrix.applymap(lambda x: f'{x:.2f}' if (abs(x) > 0.6 and abs(x) < 1) else '')
+plt.figure(figsize=(12, 10))
+sns.heatmap(corr_matrix, cmap='coolwarm', annot=annot, fmt='', annot_kws={"size": 10, "style": "italic"})
+plt.title('Correlation between features', fontsize=20)
+
+#Where there are 0.99 or 1 correlations, we drop some columns
+
+scaled_train_df.drop(['business_or_commercial', 'Secured_by', 'construction_type'], axis=1, inplace=True)
+scaled_test_df.drop(['business_or_commercial', 'Secured_by', 'construction_type'], axis=1, inplace=True)
+X_train.drop(['business_or_commercial', 'Secured_by', 'construction_type'], axis=1, inplace=True)
+X_test.drop(['business_or_commercial', 'Secured_by', 'construction_type'], axis=1, inplace=True)
+train_df.drop(['business_or_commercial', 'Secured_by', 'construction_type'], axis=1, inplace=True)
+test_df.drop(['business_or_commercial', 'Secured_by', 'construction_type'], axis=1, inplace=True)
+
+#In the cases of correlations of 0.71 and 0.61 we multiply the column values of the 2 columns and drop the original columns
+
+scaled_train_df["interest"]=scaled_train_df["rate_of_interest"]*scaled_train_df["Interest_rate_spread"]
+scaled_train_df.drop(['rate_of_interest', 'Interest_rate_spread'], axis=1, inplace=True)
+scaled_train_df["property_loan"]=scaled_train_df["property_value"]*scaled_train_df["loan_amount"]
+scaled_train_df.drop(['property_value', 'loan_amount'], axis=1, inplace=True)
+scaled_test_df["interest"]=scaled_test_df["rate_of_interest"]*scaled_test_df["Interest_rate_spread"]
+scaled_test_df.drop(['rate_of_interest', 'Interest_rate_spread'], axis=1, inplace=True)
+scaled_test_df["property_loan"]=scaled_test_df["property_value"]*scaled_test_df["loan_amount"]
+scaled_test_df.drop(['property_value', 'loan_amount'], axis=1, inplace=True)
+
+#We save the Dataframes into CSVs so that they are always available
+
+scaled_train_df.to_csv('scaled_train_df.csv', index=False)
+scaled_test_df.to_csv('scaled_test_df.csv', index=False)
+y_train.to_csv('y_train.csv', index=False, header=True)
+y_test.to_csv('y_test.csv', index=False, header=True)
+
+#We can always open them
+
+scaled_train_df = pd.read_csv('scaled_train_df.csv')
+scaled_test_df = pd.read_csv('scaled_test_df.csv')
+y_train = pd.read_csv('y_train.csv').squeeze()
+y_test = pd.read_csv('y_test.csv').squeeze()
+
+#Logistic Regression
+
+model = LogisticRegression(random_state= 42, multi_class='multinomial')
+model.fit(scaled_train_df,y_train)
+y_pred = model.predict(scaled_test_df)
+y_pred_proba = model.predict_proba(scaled_test_df)
+performance = pd.DataFrame({'Prediction':y_pred,'Actual':y_test})
+for i in range(y_pred_proba.shape[1]):
+    performance[f'Prob_Class_{i}'] = y_pred_proba[:, i]
+
+#We are more interested in the recall than in the precision because the target distribution is more or less 1 Status 1 for every Status 3. 
+#But also logically speaking we are more interested in forecasting the people who will default. It is worse to non identity someone who will default than to doubt someone who will not default.
+
+print("Recall:", round(recall_score(y_test, y_pred), 2))
+
+#Recall is 0.51. Not a good result. 
+
+print("Confusion Matrix:\n", confusion_matrix(y_test, y_pred))
+
+cm = confusion_matrix(y_test, model.predict(scaled_test_df))
+
+fig, ax = plt.subplots(figsize=(8, 8))
+ax.imshow(cm)
+ax.grid(False)
+ax.xaxis.set(ticks=(0, 1), ticklabels=('Predicted 0s', 'Predicted 1s'))
+ax.yaxis.set(ticks=(0, 1), ticklabels=('Actual 0s', 'Actual 1s'))
+ax.set_ylim(1.5, -0.5)
+for i in range(2):
+    for j in range(2):
+        ax.text(j, i, cm[i, j], ha='center', va='center', color='red')
+plt.show()
+
+#This shows prediction, actual value and probabilities.
+
+performance.head(30)
+
+#This shows that when Prob_Class_1 > 0.20 there are many Defaults. So it can be a good idea to shift the threshold, which is 0.5 at the moment
+model = LogisticRegression(random_state=42, multi_class='multinomial')
+model.fit(scaled_train_df, y_train)
+
+# Predict probabilities
+y_pred_proba = model.predict_proba(scaled_test_df)
+
+# Set the custom threshold for class 1
+custom_threshold = 0.2
+y_pred_custom = (y_pred_proba[:, 1] > custom_threshold).astype(int)
+
+# Create a performance DataFrame
+performance = pd.DataFrame({'Prediction': y_pred_custom, 'Actual': y_test})
+for i in range(y_pred_proba.shape[1]):
+    performance[f'Prob_Class_{i}'] = y_pred_proba[:, i]
+
+# Display the performance metrics
+print("Accuracy with custom threshold:", accuracy_score(y_test, y_pred_custom))
+print("Classification Report with custom threshold:\n", classification_report(y_test, y_pred_custom))
+print("Performance DataFrame with custom threshold:\n", performance.head())
+
+#Doing this the precision decreases but the Recall improves.
+
+#We can check also the coefficients, which give information about which features influence more the target.
+
+feature_names = scaled_train_df.columns.tolist()  # Get feature names from DataFrame columns
+
+coefficients = model.coef_[0] 
+
+coefficients_df = pd.DataFrame({'Feature': feature_names, 'Coefficient': coefficients})
+
+coefficients_df_sorted = coefficients_df.reindex(coefficients_df['Coefficient'].abs().sort_values(ascending=False).index)
+
+print(coefficients_df_sorted)
+
+#We can also try to use other ML methods such as the Random Forest.
+
+rf_classifier = RandomForestClassifier(n_estimators=100, random_state=42)
+ 
+rf_classifier.fit(scaled_train_df,y_train)
+ 
+y_pred = rf_classifier.predict(scaled_test_df)
+ 
+accuracy = accuracy_score(y_test, y_pred)
+recall = recall_score(y_test, y_pred, average='binary')
+classification_rep = classification_report(y_test, y_pred)
+ 
+print(f"Accuracy: {accuracy:.2f}")
+print(f"Recall: {recall:.2f}")
+print("\nClassification Report:\n", classification_rep)
+
+performance = pd.DataFrame({'Prediction':y_pred,'Actual':y_test})
+performance
+
+#We can check here as well what are the most important features.
+
+pd.Series(dict(zip(scaled_train_df, rf_classifier.feature_importances_)))
+
+def plot_feat_imp_adj(best_est, X_train, X_test, 
+                      is_grid= False,
+                      n_feat_to_plot=10, 
+                      color='xkcd:pale red', 
+                      figsize=True, 
+                      show=True,
+                      model_name= 'Decision Tree'):
+        """RETURN DF WITH SORTED FEATURE IMPORTANCES, based on the average Gini Index/ Entropy of each variable across the 
+        multiple trees...
 
 
-new_X_test.columns = new_column_names
-new_X_train.columns = new_column_names
-new_X_train
+        INPUT PARAMETERS:
+        best_est: grid search object (of a RandomForestRegressor ) already fitted on the train
+        X_train, X_test: train and test data without NA and categorical features
 
-y_train= new_X_train['Status'] #I just take column with target
-y_test= new_X_test['Status'] #I just take column with target
+        OUTPUT:
+        dataframe with sorted features and their related feature importances, plus the plot of most important features
 
-train_encoded= new_X_train.drop('Status', axis=1, errors= 'ignore') #Take out target
-test_encoded= new_X_test.drop('Status', axis=1, errors= 'ignore') #Take out target
+        """
+        
+        if is_grid:
+            model= best_est.best_estimator_
+        else:
+            model= best_est
+        
+        feats_imp = pd.DataFrame(pd.Series(dict(zip(X_train.columns, model.feature_importances_))),
+                                 columns=['importance'])
+        feats_imp = feats_imp.sort_values(by='importance', ascending=False)
 
-scaled_train_df = pd.DataFrame(scaled_train, columns=train_encoded.columns)  # df without target
-scaled_test_df = pd.DataFrame(scaled_test, columns=test_encoded.columns) # df without target
+        if show == False:
+                return feats_imp
 
-scaled_train_df.head()
+        if figsize == True:
+                feats_imp.iloc[: n_feat_to_plot]['importance'].plot.barh(color=color, edgecolor='k', figsize=(7, 4),
+                                                                         linewidth=2)
+        else:
+                feats_imp.iloc[: n_feat_to_plot]['importance'].plot.barh(color=color, edgecolor='k', linewidth=2)
 
-cont_cols= ['loan_amount','rate_of_interest','Interest_rate_spread','Upfront_charges','term','property_value','income',
-            'Credit_Score','LTV','Status','dtir1']
+        # plt.figure(figsize=(26,18))
+        ax = plt.gca()
+        ax.invert_yaxis()
+        plt.xticks(size=20)
+        plt.yticks(size=18)
 
-nice_plotting('Correlation between features', new_fig= True)
+        plt.title('Most Important Features for ' + model_name, size=15, color= 'xkcd:pale red', fontsize=20);
 
-sns.heatmap(new_X_train[cont_cols].corr(), 
-            cmap= 'coolwarm', 
-            annot= True);
+        return feats_imp
 
-#We need to deal with highly correlated values
+feat_imp_tree= plot_feat_imp_adj(rf_classifier, scaled_train_df, scaled_test_df,
+                                n_feat_to_plot= 15)
 
-logmodel = LogisticRegression()
-logmodel.fit(scaled_train_df, y_train)
-predictions = logmodel.predict(scaled_test_df)
-print(confusion_matrix(y_test, predictions))
-new_X_test["Predictions"]=pd.Series(predictions)
-new_X_test[["Status", "Predictions"]].head(50)
+#And we can see how many features are needed to get 90% of the information
 
-coefficients_df['Abs_Coefficient'] = abs(coefficients_df['Coefficient'])
+def plot_cumulative_importance(model, feature_importances, model_name='Random Forest', threshold=0.9):
+    # Ensure feature_importances is sorted by importance
+    feature_importances = feature_importances.sort_values(by='importance', ascending=False).reset_index(drop=True)
+    
+    # Calculate cumulative importances
+    cumulative_importances = feature_importances.copy()
+    cumulative_importances['cumulative'] = cumulative_importances['importance'].cumsum()
+    
+    plt.figure(figsize=(12, 5))
+    plt.plot(range(1, len(cumulative_importances) + 1), cumulative_importances['cumulative'], 'teal', lw=5.5)
 
-coefficients_df_sorted = coefficients_df.sort_values(by='Abs_Coefficient', ascending=False)
+    plt.title(f'Cumulative Importance {model_name}', color='xkcd:pale red', fontsize=20)
+    plt.hlines(y=threshold, xmin=0, xmax=len(cumulative_importances), color='xkcd:pale red', linestyles='dashed', lw=3)
+    
+    plt.xticks(np.arange(1, len(cumulative_importances) + 1, 5), fontsize=12)
+    plt.tick_params(axis='x', which='both', bottom=True, top=False, labelbottom=True)
+    
+    plt.xlabel('N° Features', color='xkcd:cadet blue', fontsize=15)
+    plt.ylabel('Cumulative Importance', fontsize=15, color='xkcd:cadet blue')
+    
+    plt.show()
 
-coefficients_df_sorted.head(20)
+plot_cumulative_importance(feat_imp_tree, feat_imp_tree, model_name= 'Random Forest', threshold= 0.9)
 
-predictions_proba = logmodel.predict_proba(scaled_test_df)
+#We can also try to use the Decision Tree. We could have used a function to fit the models
 
-probability_positive_class = predictions_proba[:, 1]
-probability_positive_class
+def basic_fit_model(model):
 
-new_X_test["Pertentage Positive Class"]=pd.Series(probability_positive_class)
-new_X_test[["Status", "Predictions", "Pertentage Positive Class"]].head(50)
+    model.fit(scaled_train_df, y_train) 
+    
+    pred_train = model.predict(scaled_train_df) 
+    pred_test = model.predict(scaled_test_df) 
+        
+    print('\033[1m \n Classification Report Train\033[0m')
+    print(classification_report(y_train, pred_train))
+
+    print('\033[1m \n\n Classification Report Test\033[0m')
+    print(classification_report(y_test, pred_test))
+              
+    print(accuracy_score(y_train, pred_train), accuracy_score(y_test, pred_test))
+    
+    print(confusion_matrix(y_train, pred_train))
+
+tree= DecisionTreeClassifier(criterion='gini',
+                            class_weight= 'balanced',
+                            random_state= 42) 
+basic_fit_model(tree)
+
+pd.Series(dict(zip(scaled_train_df, tree.feature_importances_)))
+
+feat_imp_tree= plot_feat_imp_adj(tree, scaled_train_df, scaled_test_df,
+                                n_feat_to_plot= 15)
+
+plot_cumulative_importance(tree, feat_imp_tree, model_name= 'Decision Tree', threshold= 0.9)
