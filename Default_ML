@@ -184,14 +184,14 @@ train_size= 0.8
 train_df= df.sample(frac= train_size, replace = False, random_state= 42)
 test_df= df.drop(train_df.index)
 
-#Check that there is the same proprtion of missing values in df and train_df
+#Check that there is the same proportion of missing values in df and train_df
 
 left_null(df)
 left_null(train_df)
 
 #As expected, since there are many outliers, there is difference of max values between train_df and test_df, especially in features property_value and income
 
-mmary(train_df, 'Max', 12)
+summary(train_df, 'Max', 12)
 
 summary(test_df, 'Max', 12)
 
@@ -489,14 +489,23 @@ performance = pd.DataFrame({'Prediction':y_pred,'Actual':y_test})
 for i in range(y_pred_proba.shape[1]):
     performance[f'Prob_Class_{i}'] = y_pred_proba[:, i]
 
-#We are more interested in the recall than in the precision because the target distribution is more or less 1 Status 1 for every Status 3. 
+#We are more interested in the recall than in the precision because the target distribution is more or less 1 Status 1 for every Status 3 (1 default for every 3 non-defaults). 
 #But also logically speaking we are more interested in forecasting the people who will default. It is worse to non identity someone who will default than to doubt someone who will not default.
 
-print("Recall:", round(recall_score(y_test, y_pred), 2))
+print("\033[1mAccuracy und Recall bei Test\033[0m")
+print("Accuracy:", round(accuracy_score(y_test, y_pred_test), 2)) #(SLIDE 15/16)
+print("Recall:", round(recall_score(y_test, y_pred_test), 2))
+print()
+print()
+print("\033[1mAccuracy und Recall bei Train\033[0m")
+print("Accuracy:", round(accuracy_score(y_train, y_pred_train), 2)) 
+print("Recall:", round(recall_score(y_train, y_pred_train), 2))
 
 #Recall is 0.51. Not a good result. 
 
-print("Confusion Matrix:\n", confusion_matrix(y_test, y_pred))
+print("\033[1mConfusion Matrix bei Test\033[0m:\n", confusion_matrix(y_test, y_pred_test))
+print()
+print("\033[1mConfusion Matrix bei Train\033[0m:\n", confusion_matrix(y_train, y_pred_train))
 
 cm = confusion_matrix(y_test, model.predict(scaled_test_df))
 
@@ -511,46 +520,396 @@ for i in range(2):
         ax.text(j, i, cm[i, j], ha='center', va='center', color='red')
 plt.show()
 
+print("\033[1mClassification Report Test:\033[0m") #SLIDE 17
+print(classification_report(y_test, y_pred_test))
+print()
+print("\033[1mClassification Report Train:\033[0m")
+print(classification_report(y_train, y_pred_train))
+
 #This shows prediction, actual value and probabilities.
 
-performance.head(30)
+print("\033[1mPerformance DataFrame:\033[0m")
+performance_test.head(30)
 
 #This shows that when Prob_Class_1 > 0.20 there are many Defaults. So it can be a good idea to shift the threshold, which is 0.5 at the moment
+
 model = LogisticRegression(random_state=42, multi_class='multinomial')
 model.fit(scaled_train_df, y_train)
 
-# Predict probabilities
-y_pred_proba = model.predict_proba(scaled_test_df)
+y_pred_test = model.predict(scaled_test_df)
+y_pred_train = model.predict(scaled_train_df)
+y_pred_proba_test = model.predict_proba(scaled_test_df)
+y_pred_proba_train = model.predict_proba(scaled_train_df)
 
-# Set the custom threshold for class 1
 custom_threshold = 0.2
-y_pred_custom = (y_pred_proba[:, 1] > custom_threshold).astype(int)
+y_pred_custom_test = (y_pred_proba_test[:, 1] > custom_threshold).astype(int)
+y_pred_custom_train = (y_pred_proba_train[:, 1] > custom_threshold).astype(int)
 
-# Create a performance DataFrame
-performance = pd.DataFrame({'Prediction': y_pred_custom, 'Actual': y_test})
-for i in range(y_pred_proba.shape[1]):
-    performance[f'Prob_Class_{i}'] = y_pred_proba[:, i]
+performance_test = pd.DataFrame({'Prediction': y_pred_custom_test, 'Actual': y_test})
+performance_train = pd.DataFrame({'Prediction': y_pred_custom_train, 'Actual': y_train})
+
+for i in range(y_pred_proba_test.shape[1]):
+    performance_test[f'Prob_Class_{i}'] = y_pred_proba_test[:, i]
+
+for i in range(y_pred_proba_train.shape[1]):
+    performance_train[f'Prob_Class_{i}'] = y_pred_proba_train[:, i]
 
 # Display the performance metrics
-print("Accuracy with custom threshold:", accuracy_score(y_test, y_pred_custom))
-print("Classification Report with custom threshold:\n", classification_report(y_test, y_pred_custom))
-print("Performance DataFrame with custom threshold:\n", performance.head())
+
+print("\033[1mAccuracy und Recall bei Test mit der Grenze\033[0m")
+print("Accuracy:", round(accuracy_score(y_test, y_pred_custom_test), 2))
+print("Recall:", round(recall_score(y_test, y_pred_custom_test), 2))
+print()
+print()
+print("\033[1mAccuracy und Recall bei Train mit der Grenze\033[0m")
+print("Accuracy:", round(accuracy_score(y_train, y_pred_custom_train), 2)) 
+print("Recall:", round(recall_score(y_train, y_pred_custom_train), 2))
+print("\033[1mClassification Report Test mit der Grenze:\033[0m")
+print(classification_report(y_test, y_pred_custom_test))
+print()
+print("\033[1mClassification Report Train mit der Grenze:\033[0m")
+print(classification_report(y_train, y_pred_custom_train))
 
 #Doing this the precision decreases but the Recall improves.
 
 #We can check also the coefficients, which give information about which features influence more the target.
 
-feature_names = scaled_train_df.columns.tolist()  # Get feature names from DataFrame columns
+feature_names = scaled_train_df.columns.tolist() 
+
+coefficients = model.coef_[0] #(SLIDE 18-19)
+
+coefficients_df = pd.DataFrame({'Feature': feature_names, 'Koeffiziente': coefficients})
+
+coefficients_df_sorted = coefficients_df.reindex(coefficients_df['Koeffiziente'].abs().sort_values(ascending=False).index)
+
+print(coefficients_df_sorted)
+
+#We can try to start from scratch and see the results simply dropping rows with missing values and without handling outliers and without handling the correlated columns
+df= pd.read_csv('Loan_Default.csv')
+df.shape
+train_size= 0.8
+train_df= df.sample(frac= train_size, replace = False, random_state= 42)
+test_df= df.drop(train_df.index)
+categorical_columns = list(df.select_dtypes(include = object).columns)
+dictionary_means = {}
+
+for column in categorical_columns:
+    
+    diz_means_cols= train_df.groupby(column).apply(get_target_mean).to_dict()
+    
+    dictionary_means[column] = diz_means_cols
+    
+for column in categorical_columns:
+    
+    train_df[column] = train_df[column].map(dictionary_means[column])
+    test_df[column] = test_df[column].map(dictionary_means[column])
+X_train = train_df.drop("Status", axis=1)
+y_train = train_df["Status"]
+X_test = test_df.drop("Status", axis=1)
+y_test = test_df["Status"]
+model = LogisticRegression(random_state= 42, multi_class='multinomial')
+model.fit(X_train,y_train)
+y_pred = model.predict(X_test)
+y_pred_proba = model.predict_proba(X_test)
+performance = pd.DataFrame({'Prediction':y_pred,'Actual':y_test})
+for i in range(y_pred_proba.shape[1]):
+    performance[f'Prob_Class_{i}'] = y_pred_proba[:, i]
+print(classification_report(y_test, y_pred))
+#we get this error: ValueError: This solver needs samples of at least 2 classes in the data, but the data contains only one class: 0
+df["Status"].unique() #this can be seen also here
+#This means that when there are no missing values, the Target/Status is just 0. So We can start again, do the same but add a column saying if there are missing values.
+
+import pandas as pd #Excel
+import numpy as np #Mathematik
+import locale
+import seaborn as sns #Informationsgrafiken
+import matplotlib.pyplot as plt #Informationsgrafiken
+from matplotlib.pyplot import pie, axis, show #Informationsgrafiken
+import random
+
+#Machine Learning
+
+from sklearn.preprocessing import OneHotEncoder, LabelEncoder 
+from sklearn.preprocessing import MinMaxScaler, StandardScaler, RobustScaler, MaxAbsScaler
+
+from sklearn.linear_model import LogisticRegression
+
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import VotingClassifier
+
+from sklearn.model_selection import train_test_split, GridSearchCV
+
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, roc_auc_score 
+from sklearn.metrics import roc_curve, f1_score, precision_score, recall_score
+
+import warnings
+import sys
+import os
+
+import time
+from datetime import datetime
+
+pd.set_option('display.max_columns', 45)
+warnings.filterwarnings("ignore")
+sns.set()
+
+df= pd.read_csv('Loan_Default.csv')
+df.set_index("ID", inplace=True)
+
+df.drop(['year'], axis=1, inplace=True)
+df['Presence of NaNs'] = df.isna().any(axis=1)
+df["Presence of NaNs"] = df["Presence of NaNs"].replace([True, False], [1, 0])
+
+train_size= 0.8
+train_df= df.sample(frac= train_size, replace = False, random_state= 42)
+test_df= df.drop(train_df.index)
+columns_with_outliers = ["income", "loan_amount", "property_value", "LTV", "Upfront_charges"]
+for column in columns_with_outliers:
+    train_df[f'zscore_{column}'] = (train_df[column] - train_df[column].mean())/train_df[column].std()
+
+limit_z_value = 10
+train_df = train_df.drop(train_df[(train_df.zscore_income > limit_z_value) | (train_df.zscore_loan_amount > limit_z_value) | 
+                               (train_df.zscore_property_value > limit_z_value) | (train_df.zscore_LTV > limit_z_value) | 
+                               (train_df.zscore_Upfront_charges > limit_z_value)].index)
+
+def delete_zscore_columns(dataframe):
+    columns_to_delete = ['zscore_property_value', 'zscore_loan_amount', 'zscore_income',
+           'zscore_LTV', 'zscore_Upfront_charges']
+    for column in columns_to_delete:
+        dataframe.drop([column], axis=1, inplace=True)
+
+delete_zscore_columns(train_df)
+
+def fill_randomly(column):
+    
+    list_column_probabilities = round(train_df[column].value_counts(normalize=True), 3)
+
+    list_values = sorted(train_df[column].dropna().unique())
+
+    values_probabilities = [list_column_probabilities[column] for column in list_values]
+
+    cum_weights = [sum(values_probabilities[:i+1]) for i in range(len(values_probabilities))]
+
+    random_values = random.choices(list_values, cum_weights=cum_weights, k=train_df[column].isna().sum())
+    train_df.loc[train_df[column].isna(), column] = random_values
+
+    random_values = random.choices(list_values, cum_weights=cum_weights, k=test_df[column].isna().sum())
+    test_df.loc[test_df[column].isna(), column] = random_values
+
+fill_randomly("age")
+
+def summary(df, by='Null Values', head=None):
+    unique_values = {}
+    null_values = {}
+    type_values = {}
+    max_values = {}
+    min_values = {}
+    mean_values = {}
+    median_values = {}
+    std_values = {}
+
+    for i in df.columns:
+        unique_values[i] = len(df[i].unique())
+        null_values[i] = df[i].isna().sum()
+        type_values[i] = df[i].dtype
+        if df[i].dtype == "int64" or df[i].dtype == "float64":
+            max_values[i] = df[i].max()
+            min_values[i] = df[i].min()
+            mean_values[i] = df[i].mean()
+            median_values[i] = df[i].median()
+            std_values[i] = df[i].std()
+
+    df_values = pd.DataFrame(list(unique_values.items()), columns=['Column', 'Unique Values'])
+    df_values.set_index('Column', inplace=True)
+
+    df_null_values = pd.DataFrame(list(null_values.items()), columns=['Column', 'Null Values'])
+    df_null_values.set_index('Column', inplace=True)
+
+    df_types_values = pd.DataFrame(list(type_values.items()), columns=['Column', 'Type'])
+    df_types_values.set_index('Column', inplace=True)
+
+    df_max = pd.DataFrame(list(max_values.items()), columns=['Column', 'Max'])
+    df_max.set_index('Column', inplace=True)
+
+    df_min = pd.DataFrame(list(min_values.items()), columns=['Column', 'Min'])
+    df_min.set_index('Column', inplace=True)
+
+    df_mean = pd.DataFrame(list(mean_values.items()), columns=['Column', 'Mean'])
+    df_mean.set_index('Column', inplace=True)
+
+    df_median = pd.DataFrame(list(median_values.items()), columns=['Column', 'Median'])
+    df_median.set_index('Column', inplace=True)
+    
+    df_std = pd.DataFrame(list(std_values.items()), columns=['Column', 'Std'])
+    df_std.set_index('Column', inplace=True)
+
+    summary_df = pd.concat([df_null_values, df_values, df_types_values, df_max, df_mean, df_min, df_median, df_std], axis=1)
+    summary_df["Null Values"] = summary_df["Null Values"] / len(df) * 100
+    summary_df = summary_df.sort_values(by=[by], ascending=False)
+    
+    if head is not None:
+        summary_df = summary_df.head(head)
+
+    return summary_df.style.format({
+        "Null Values": "{:,.2f}",  
+        "Max": "{:,.2f}",
+        "Mean": "{:,.2f}",
+        "Min": "{:,.2f}",
+        "Median": "{:,.2f}",
+        "Std": "{:,.2f}"
+    })
+float_null_columns = []
+object_null_columns = []
+
+def list_columns_with_null(dataframe):
+
+    styled_summary = summary(dataframe, 'Null Values')
+    summary_df = styled_summary.data
+
+    filtered_summary_df = summary_df[summary_df['Null Values'] > 0]
+
+    for column, dtype in filtered_summary_df['Type'].items():
+        if dtype == 'float64':
+            float_null_columns.append(column)
+        else:
+            object_null_columns.append(column)
+list_columns_with_null(train_df)
+Upfront_charges=train_df.groupby("age")["Upfront_charges"].mean()
+Interest_rate_spread=train_df.groupby("age")["Interest_rate_spread"].mean()
+rate_of_interest=train_df.groupby("age")["rate_of_interest"].mean()
+dtir1=train_df.groupby("age")["dtir1"].mean()
+LTV=train_df.groupby("age")["LTV"].mean()
+property_value=train_df.groupby("age")["property_value"].mean()
+income=train_df.groupby("age")["income"].mean()
+term=train_df.groupby("age")["term"].mean()
+mean_values_by_age = {
+    "term": term,
+    "Upfront_charges":Upfront_charges,
+    "Interest_rate_spread":Interest_rate_spread,
+    "rate_of_interest": rate_of_interest,
+    "dtir1": dtir1,
+    "LTV": LTV,
+    "property_value": property_value,
+    "income":income
+}
+for column in float_null_columns:
+    for age_group in train_df["age"].unique():
+        
+        mean_value = mean_values_by_age[column].get(age_group, np.nan)
+        
+        train_df.loc[train_df.age == age_group, column] = train_df.loc[train_df.age == age_group, column].fillna(mean_value)
+        test_df.loc[test_df.age == age_group, column] = test_df.loc[test_df.age == age_group, column].fillna(mean_value)
+train_df['loan_limit'].replace(np.nan, 'cf', inplace=True)
+test_df['loan_limit'].replace(np.nan, 'cf', inplace=True)
+train_df['approv_in_adv'].replace(np.nan, 'nopre', inplace=True)
+test_df['approv_in_adv'].replace(np.nan, 'nopre', inplace=True)
+train_df['Neg_ammortization'].replace(np.nan, 'not_neg', inplace=True)
+test_df['Neg_ammortization'].replace(np.nan, 'not_neg', inplace=True)
+fill_randomly("submission_of_application")
+fill_randomly("loan_purpose")       
+categorical_columns = list(train_df.select_dtypes(include = object).columns)
+non_categorical_columns = list(train_df.select_dtypes(exclude = object).columns)
+
+def get_target_mean(row):   
+    
+    target_mean = row['Status'].mean()
+    return round(target_mean,3)
+
+dictionary_means = {}
+
+for column in categorical_columns:
+    
+    diz_means_cols= train_df.groupby(column).apply(get_target_mean).to_dict()
+    
+    dictionary_means[column] = diz_means_cols
+
+for column in categorical_columns:
+    
+    train_df[column] = train_df[column].map(dictionary_means[column])
+    test_df[column] = test_df[column].map(dictionary_means[column])
+
+X_train = train_df.drop("Status", axis=1)
+y_train = train_df["Status"]
+X_test = test_df.drop("Status", axis=1)
+y_test = test_df["Status"]
+
+scaler = StandardScaler(with_mean=True, with_std=True)
+
+scaled_train= scaler.fit_transform(X_train) 
+
+scaled_test= scaler.transform(X_test)
+scaled_train_df = pd.DataFrame(scaled_train, columns=X_train.columns) 
+scaled_test_df = pd.DataFrame(scaled_test, columns=X_test.columns)
+scaled_train_df.drop(['business_or_commercial', 'Secured_by', 'construction_type'], axis=1, inplace=True)
+scaled_test_df.drop(['business_or_commercial', 'Secured_by', 'construction_type'], axis=1, inplace=True)
+X_train.drop(['business_or_commercial', 'Secured_by', 'construction_type'], axis=1, inplace=True)
+X_test.drop(['business_or_commercial', 'Secured_by', 'construction_type'], axis=1, inplace=True)
+train_df.drop(['business_or_commercial', 'Secured_by', 'construction_type'], axis=1, inplace=True)
+test_df.drop(['business_or_commercial', 'Secured_by', 'construction_type'], axis=1, inplace=True)
+scaled_train_df["interest"]=scaled_train_df["rate_of_interest"]*scaled_train_df["Interest_rate_spread"]
+scaled_train_df.drop(['rate_of_interest', 'Interest_rate_spread'], axis=1, inplace=True)
+scaled_train_df["property_loan"]=scaled_train_df["property_value"]*scaled_train_df["loan_amount"]
+scaled_train_df.drop(['property_value', 'loan_amount'], axis=1, inplace=True)
+scaled_test_df["interest"]=scaled_test_df["rate_of_interest"]*scaled_test_df["Interest_rate_spread"]
+scaled_test_df.drop(['rate_of_interest', 'Interest_rate_spread'], axis=1, inplace=True)
+scaled_test_df["property_loan"]=scaled_test_df["property_value"]*scaled_test_df["loan_amount"]
+scaled_test_df.drop(['property_value', 'loan_amount'], axis=1, inplace=True)
+model = LogisticRegression(random_state=42, multi_class='multinomial')
+model.fit(scaled_train_df, y_train)
+
+y_pred_test = model.predict(scaled_test_df)
+y_pred_train = model.predict(scaled_train_df)
+y_pred_proba_test = model.predict_proba(scaled_test_df)
+y_pred_proba_train = model.predict_proba(scaled_train_df)
+
+performance_test = pd.DataFrame({'Prediction': y_pred_test, 'Actual': y_test})
+performance_train = pd.DataFrame({'Prediction': y_pred_train, 'Actual': y_train})
+
+for i in range(y_pred_proba_test.shape[1]):
+    performance_test[f'Prob_Class_{i}'] = y_pred_proba_test[:, i]
+
+for i in range(y_pred_proba_train.shape[1]):
+    performance_train[f'Prob_Class_{i}'] = y_pred_proba_train[:, i]
+
+
+print("\033[1mAccuracy und Recall bei Test\033[0m")
+print("Accuracy:", round(accuracy_score(y_test, y_pred_test), 2)) #(SLIDE 15/16)
+print("Recall:", round(recall_score(y_test, y_pred_test), 2))
+print()
+print()
+print("\033[1mAccuracy und Recall bei Train\033[0m")
+print("Accuracy:", round(accuracy_score(y_train, y_pred_train), 2)) 
+print("Recall:", round(recall_score(y_train, y_pred_train), 2))
+
+print("\033[1mConfusion Matrix bei Test\033[0m:\n", confusion_matrix(y_test, y_pred_test))
+print()
+print("\033[1mConfusion Matrix bei Train\033[0m:\n", confusion_matrix(y_train, y_pred_train))
+
+print("\033[1mClassification Report Test:\033[0m") 
+print(classification_report(y_test, y_pred_test))
+print()
+print("\033[1mClassification Report Train:\033[0m")
+print(classification_report(y_train, y_pred_train))
+
+print("\033[1mPerformance DataFrame:\033[0m")
+performance_test.head(30)
+
+feature_names = scaled_train_df.columns.tolist() 
 
 coefficients = model.coef_[0] 
 
-coefficients_df = pd.DataFrame({'Feature': feature_names, 'Coefficient': coefficients})
+coefficients_df = pd.DataFrame({'Feature': feature_names, 'Koeffiziente': coefficients})
 
-coefficients_df_sorted = coefficients_df.reindex(coefficients_df['Coefficient'].abs().sort_values(ascending=False).index)
+coefficients_df_sorted = coefficients_df.reindex(coefficients_df['Koeffiziente'].abs().sort_values(ascending=False).index)
 
 print(coefficients_df_sorted)
 
 #We can also try to use other ML methods such as the Random Forest.
+scaled_train_df = pd.read_csv('scaled_train_df.csv')
+scaled_test_df = pd.read_csv('scaled_test_df.csv')
+y_train = pd.read_csv('y_train.csv').squeeze()
+y_test = pd.read_csv('y_test.csv').squeeze()
 
 rf_classifier = RandomForestClassifier(n_estimators=100, random_state=42)
  
@@ -565,9 +924,6 @@ classification_rep = classification_report(y_test, y_pred)
 print(f"Accuracy: {accuracy:.2f}")
 print(f"Recall: {recall:.2f}")
 print("\nClassification Report:\n", classification_rep)
-
-performance = pd.DataFrame({'Prediction':y_pred,'Actual':y_test})
-performance
 
 #We can check here as well what are the most important features.
 
