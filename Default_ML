@@ -492,20 +492,20 @@ for i in range(y_pred_proba.shape[1]):
 #We are more interested in the recall than in the precision because the target distribution is more or less 1 Status 1 for every Status 3 (1 default for every 3 non-defaults). 
 #But also logically speaking we are more interested in forecasting the people who will default. It is worse to non identity someone who will default than to doubt someone who will not default.
 
-print("\033[1mAccuracy und Recall bei Test\033[0m")
+print("\033[1mAccuracy and Recall in Test\033[0m")
 print("Accuracy:", round(accuracy_score(y_test, y_pred_test), 2)) #(SLIDE 15/16)
 print("Recall:", round(recall_score(y_test, y_pred_test), 2))
 print()
 print()
-print("\033[1mAccuracy und Recall bei Train\033[0m")
+print("\033[1mAccuracy and Recall in Train\033[0m")
 print("Accuracy:", round(accuracy_score(y_train, y_pred_train), 2)) 
 print("Recall:", round(recall_score(y_train, y_pred_train), 2))
 
 #Recall is 0.51. Not a good result. 
 
-print("\033[1mConfusion Matrix bei Test\033[0m:\n", confusion_matrix(y_test, y_pred_test))
+print("\033[1mConfusion Matrix in Test\033[0m:\n", confusion_matrix(y_test, y_pred_test))
 print()
-print("\033[1mConfusion Matrix bei Train\033[0m:\n", confusion_matrix(y_train, y_pred_train))
+print("\033[1mConfusion Matrix in Train\033[0m:\n", confusion_matrix(y_train, y_pred_train))
 
 cm = confusion_matrix(y_test, model.predict(scaled_test_df))
 
@@ -556,18 +556,18 @@ for i in range(y_pred_proba_train.shape[1]):
 
 # Display the performance metrics
 
-print("\033[1mAccuracy und Recall bei Test mit der Grenze\033[0m")
+print("\033[1mAccuracy and Recall in Test with the threshold\033[0m")
 print("Accuracy:", round(accuracy_score(y_test, y_pred_custom_test), 2))
 print("Recall:", round(recall_score(y_test, y_pred_custom_test), 2))
 print()
 print()
-print("\033[1mAccuracy und Recall bei Train mit der Grenze\033[0m")
+print("\033[1mAccuracy and Recall in Train with the threshold\033[0m")
 print("Accuracy:", round(accuracy_score(y_train, y_pred_custom_train), 2)) 
 print("Recall:", round(recall_score(y_train, y_pred_custom_train), 2))
-print("\033[1mClassification Report Test mit der Grenze:\033[0m")
+print("\033[1mClassification Report Test with the threshold:\033[0m")
 print(classification_report(y_test, y_pred_custom_test))
 print()
-print("\033[1mClassification Report Train mit der Grenze:\033[0m")
+print("\033[1mClassification Report Train with the threshold:\033[0m")
 print(classification_report(y_train, y_pred_custom_train))
 
 #Doing this the precision decreases but the Recall improves.
@@ -878,13 +878,13 @@ print("Accuracy:", round(accuracy_score(y_test, y_pred_test), 2)) #(SLIDE 15/16)
 print("Recall:", round(recall_score(y_test, y_pred_test), 2))
 print()
 print()
-print("\033[1mAccuracy und Recall bei Train\033[0m")
+print("\033[1mAccuracy and Recall in Train\033[0m")
 print("Accuracy:", round(accuracy_score(y_train, y_pred_train), 2)) 
 print("Recall:", round(recall_score(y_train, y_pred_train), 2))
 
-print("\033[1mConfusion Matrix bei Test\033[0m:\n", confusion_matrix(y_test, y_pred_test))
+print("\033[1mConfusion Matrix in Test\033[0m:\n", confusion_matrix(y_test, y_pred_test))
 print()
-print("\033[1mConfusion Matrix bei Train\033[0m:\n", confusion_matrix(y_train, y_pred_train))
+print("\033[1mConfusion Matrix in Train\033[0m:\n", confusion_matrix(y_train, y_pred_train))
 
 print("\033[1mClassification Report Test:\033[0m") 
 print(classification_report(y_test, y_pred_test))
